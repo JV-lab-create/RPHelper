@@ -15,13 +15,15 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 public class PackManager {
     public static final Path RESOURCE_PACK_LOCATION = FabricLoader.getInstance().getGameDir().resolve("resourcepacks");
-    private static final List<Runnable> unloadCallback = new ArrayList<>();
 
     public static void downloadOrUpdate(boolean init) {
         for(PackEntry packEntry : Config.getPackEntries()) {
@@ -31,7 +33,16 @@ public class PackManager {
             }
 
             File packFile = RESOURCE_PACK_LOCATION.resolve(packEntry.getFileName()).toFile();
-            HashComparisonResult hashResult = HashManager.compareHash(packEntry, packFile, true);
+            HashComparisonResult hashResult;
+            if(packEntry.sha1Url != null) {
+                hashResult = HashManager.compareRemoteHash(packEntry, packFile, true);
+            } else {
+                if(packEntry.sha1 == null) {
+                    hashResult = HashComparisonResult.NOT_AVAIL;
+                } else {
+                    hashResult = HashManager.compareLocalHash(packEntry, packFile);
+                }
+            }
 
             if (hashResult == HashComparisonResult.MATCH || hashResult == HashComparisonResult.NOT_AVAIL) {
                 // Up to date
@@ -43,59 +54,15 @@ public class PackManager {
                     logPackInfo(packEntry, "Will be downloaded.");
 
                     long curTime = System.currentTimeMillis();
-                    File downloadedLocation = downloadPack(packEntry, packFile);
+                    downloadPack(packEntry, packFile);
                     long timeDiff = System.currentTimeMillis() - curTime;
                     logPackInfo(packEntry, "Took " + (timeDiff / 1000.0) + "s");
-
-                    if(packFile.exists()) { // Files on Windows are locked, we have to unload the rp first before replacing
-                        unloadCallback.add(() -> {
-                            try {
-                                Files.deleteIfExists(packFile.toPath());
-                                Files.move(downloadedLocation.toPath(), packFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        });
-                    } else {
-                        try {
-                            Files.move(downloadedLocation.toPath(), packFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    }
-
-                    if(Config.getPackEntries().stream().allMatch(e -> e.ready)) {
-                        packDownloaded();
-                    }
                 });
             }
         }
     }
 
-    private static void packDownloaded() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if(!unloadCallback.isEmpty()) {
-            List<String> oldPackList = mc.options.resourcePacks;
-            MinecraftClient.getInstance().options.resourcePacks.clear();
-            Log.info("Clearing all resource pack");
-
-            for(Runnable callback : unloadCallback) {
-                callback.run();
-            }
-            unloadCallback.clear();
-
-            Log.info("Reapplying resource pack");
-            mc.reloadResources().whenComplete((r, v) -> {
-                mc.options.resourcePacks.addAll(oldPackList);
-                ServerLockManager.reloadPackDueToUpdate();
-            });
-        } else {
-            Log.info("Reloading resource pack");
-            ServerLockManager.reloadPackDueToUpdate();
-        }
-    }
-
-    public static File downloadPack(PackEntry packEntry, File outputLocation) {
+    public static void downloadPack(PackEntry packEntry, File outputLocation) {
         ToastManager.setupNewDownloadToast(packEntry);
         File tmpOutputLocation = outputLocation.getParentFile().toPath().resolve(UUID.randomUUID().toString()).toFile();
 
@@ -118,29 +85,48 @@ public class PackManager {
                     return;
                 }
 
+                MinecraftClient mc = MinecraftClient.getInstance();
                 ToastManager.updateDownloadToastProgress(packEntry, 1);
 
-                if(HashManager.compareHash(packEntry, tmpOutputLocation, false) == HashComparisonResult.MISMATCH) {
+                if(HashManager.compareRemoteHash(packEntry, tmpOutputLocation) == HashComparisonResult.MISMATCH) {
                     logPackWarn(packEntry, "Resource pack downloaded but the file hash does not match, not applying!");
                     packEntry.ready = false;
                     ToastManager.fail(packEntry.name, "Hash Mismatch, file might be corrupted.");
-
-                    try {
-                        Files.delete(tmpOutputLocation.toPath());
-                    } catch (IOException ignored) {
-
-                    }
                     return;
                 }
 
                 logPackInfo(packEntry, "Download successful!");
                 packEntry.ready = true;
+
+                if(outputLocation.exists()) { // Files on Windows are locked, we have to unload the rp first before replacing
+                    List<String> oldPackList = mc.options.resourcePacks;
+                    mc.options.resourcePacks.clear();
+                    Log.info("Clearing all resource pack");
+
+                    mc.reloadResources().whenComplete((r, v) -> {
+                        try {
+                            Files.deleteIfExists(outputLocation.toPath());
+                            Files.move(tmpOutputLocation.toPath(), outputLocation.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                        Log.info("Reapplying resource pack");
+                        mc.options.resourcePacks.addAll(oldPackList);
+                        ServerLockManager.reloadPackDueToUpdate();
+                    });
+                } else {
+                    try {
+                        Files.move(tmpOutputLocation.toPath(), outputLocation.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                    ServerLockManager.reloadPackDueToUpdate();
+                }
             });
         } catch (Exception e) {
-            Log.LOGGER.error(e);
+            e.printStackTrace();
             ToastManager.fail(packEntry.name, "Please check console for error.");
         }
-        return tmpOutputLocation;
     }
 
     public static boolean equivPackLoaded(PackEntry entry) {

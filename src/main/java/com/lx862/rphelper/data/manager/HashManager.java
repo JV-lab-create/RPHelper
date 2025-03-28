@@ -1,7 +1,6 @@
 package com.lx862.rphelper.data.manager;
 
 import com.lx862.rphelper.data.HashComparisonResult;
-import com.lx862.rphelper.data.Log;
 import com.lx862.rphelper.data.PackEntry;
 import com.lx862.rphelper.network.NetworkManager;
 import org.apache.commons.codec.digest.DigestUtils;
@@ -37,28 +36,16 @@ public class HashManager {
         } catch (UnknownHostException e) {
             return null;
         } catch (IOException e) {
-            Log.LOGGER.error(e);
+            e.printStackTrace();
             return null;
-        }
-    }
-
-    public static HashComparisonResult compareHash(PackEntry packEntry, File localFile, boolean ignoreRemoteCache) {
-        if(packEntry.sha1Url != null) {
-            return HashManager.compareRemoteHash(packEntry, localFile, true);
-        } else {
-            if(packEntry.sha1 == null) {
-                return HashComparisonResult.NOT_AVAIL;
-            } else {
-                return HashManager.compareLocalHash(packEntry, localFile);
-            }
         }
     }
 
     public static String getFileHash(File file) {
         if(!file.exists()) return null;
 
-        try(FileInputStream fis = new FileInputStream(file)) {
-            return DigestUtils.sha1Hex(fis).trim();
+        try {
+            return DigestUtils.sha1Hex(new FileInputStream(file)).trim();
         } catch (Exception e) {
             return null;
         }
@@ -111,7 +98,7 @@ public class HashManager {
             }
             return remoteSha1.equals(localSha1) ? HashComparisonResult.MATCH : HashComparisonResult.MISMATCH;
         } catch (Exception e) {
-            Log.LOGGER.error(e);
+            e.printStackTrace();
         }
         return HashComparisonResult.NOT_AVAIL;
     }

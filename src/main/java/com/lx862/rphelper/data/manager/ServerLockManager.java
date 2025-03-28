@@ -4,12 +4,10 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lx862.rphelper.config.Config;
-import com.lx862.rphelper.data.Log;
 import com.lx862.rphelper.data.PackEntry;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ServerInfo;
 import net.minecraft.resource.AbstractFileResourcePack;
-import net.minecraft.resource.InputSupplier;
 import net.minecraft.resource.ResourcePackManager;
 import org.apache.commons.io.IOUtils;
 
@@ -57,7 +55,6 @@ public class ServerLockManager {
 
             if(!packApplied && packShouldBeActive && !PackManager.equivPackLoaded(packEntry)) {
                 mc.options.resourcePacks.add(packName);
-                mc.options.incompatibleResourcePacks.add(packName);
             }
 
             ResourcePackManager resourcePackManager = mc.getResourcePackManager();
@@ -78,10 +75,10 @@ public class ServerLockManager {
         serverLocks.clear();
         PackManager.loopPack((entry, rp) -> {
             if(!(rp instanceof AbstractFileResourcePack frp)) return;
-            InputSupplier<InputStream> ip = frp.openRoot("pack.mcmeta");
-            if(ip == null) return;
 
-            try (InputStream is = ip.get()) {
+            try (InputStream is = frp.openRoot("pack.mcmeta")) {
+                if(is == null) return;
+
                 String str = IOUtils.toString(is, StandardCharsets.UTF_8);
                 JsonObject jsonObject = JsonParser.parseString(str).getAsJsonObject().get("pack").getAsJsonObject();
                 if(jsonObject.has("serverWhitelist")) {
@@ -93,7 +90,7 @@ public class ServerLockManager {
                     serverLocks.put(entry.uniqueId(), newIpArray);
                 }
             } catch (Exception e) {
-                Log.LOGGER.error(e);
+                e.printStackTrace();
             }
         });
     }

@@ -2,12 +2,9 @@ package com.lx862.rphelper.config;
 
 import com.google.gson.*;
 import com.lx862.rphelper.RPHelper;
-import com.lx862.rphelper.Util;
-import com.lx862.rphelper.data.Log;
 import com.lx862.rphelper.data.PackEntry;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.JsonHelper;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,7 +14,7 @@ import java.util.List;
 public class Config {
     private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("rphelper").resolve("config.json");
     private static final List<PackEntry> packEntries = new ArrayList<>();
-    private static int requestTimeoutSec;
+    private static int requestTimeoutSec = 10;
 
     private static Identifier normalTexture = RPHelper.id("textures/normal_texture.png");
     private static Identifier errorTexture = RPHelper.id("textures/error_texture.png");
@@ -45,11 +42,11 @@ public class Config {
                 try {
                     packEntries.add(new Gson().fromJson(e.getAsJsonObject(), PackEntry.class));
                 } catch (Exception ex) {
-                    Log.LOGGER.error(ex);
+                    ex.printStackTrace();
                 }
             });
 
-            requestTimeoutSec = JsonHelper.getInt(jsonObject, "requestTimeoutSec", 10);
+            requestTimeoutSec = jsonObject.get("requestTimeoutSec").getAsInt();
 
             if (!jsonObject.has("appearance")) {
                 JsonObject defaultAppearance = createDefaultAppearance();
@@ -69,16 +66,16 @@ public class Config {
                     appearanceObject.get("icon_texture").getAsString()
                 );
                 iconSize = appearanceObject.get("icon_size").getAsInt();
-                normalTitleColor = Util.hexToDecimal(appearanceObject.get("normal_title_color").getAsString());
-                normalDescriptionColor = Util.hexToDecimal(appearanceObject.get("normal_description_color").getAsString());
-                errorTitleColor = Util.hexToDecimal(appearanceObject.get("error_title_color").getAsString());
-                errorDescriptionColor = Util.hexToDecimal(appearanceObject.get("error_description_color").getAsString());
+                normalTitleColor = hexToDecimal(appearanceObject.get("normal_title_color").getAsString());
+                normalDescriptionColor = hexToDecimal(appearanceObject.get("normal_description_color").getAsString());
+                errorTitleColor = hexToDecimal(appearanceObject.get("error_title_color").getAsString());
+                errorDescriptionColor = hexToDecimal(appearanceObject.get("error_description_color").getAsString());
                 width = appearanceObject.get("width").getAsInt();
                 height = appearanceObject.get("height").getAsInt();
                 duration = appearanceObject.get("duration").getAsLong();
             }
         } catch (Exception e) {
-            Log.LOGGER.error(e);
+            e.printStackTrace();
         }
     }
 
@@ -99,7 +96,7 @@ public class Config {
             CONFIG_PATH.getParent().toFile().mkdirs();
             Files.writeString(CONFIG_PATH, new GsonBuilder().setPrettyPrinting().create().toJson(jsonObject));
         } catch (Exception e) {
-            Log.LOGGER.error(e);
+            e.printStackTrace();
         }
     }
 
@@ -164,6 +161,14 @@ public class Config {
         return packEntries.stream().anyMatch(e -> e.sourceUrl.toString().equals(url));
     }
 
+    private static String decimalToHex(int decimal) {
+        return "0x" + Integer.toHexString(decimal).toUpperCase();
+    }
+
+    private static int hexToDecimal(String hex) {
+        return Integer.decode(hex);
+    }
+
     private static JsonObject createDefaultAppearance() {
         JsonObject appearanceObject = new JsonObject();
         appearanceObject.addProperty("normal_texture", normalTexture.toString());
@@ -171,10 +176,10 @@ public class Config {
         appearanceObject.addProperty("icon_texture", iconTexture.toString());
 
         appearanceObject.addProperty("icon_size", iconSize);
-        appearanceObject.addProperty("normal_title_color", Util.decimalToHex(normalTitleColor));
-        appearanceObject.addProperty("normal_description_color", Util.decimalToHex(normalDescriptionColor));
-        appearanceObject.addProperty("error_title_color", Util.decimalToHex(errorTitleColor));
-        appearanceObject.addProperty("error_description_color", Util.decimalToHex(errorDescriptionColor));
+        appearanceObject.addProperty("normal_title_color", decimalToHex(normalTitleColor));
+        appearanceObject.addProperty("normal_description_color", decimalToHex(normalDescriptionColor));
+        appearanceObject.addProperty("error_title_color", decimalToHex(errorTitleColor));
+        appearanceObject.addProperty("error_description_color", decimalToHex(errorDescriptionColor));
         appearanceObject.addProperty("width", width);
         appearanceObject.addProperty("height", height);
         appearanceObject.addProperty("duration", duration);
